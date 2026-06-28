@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英留模拟器 · UK Life Simulator</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2e3350;
+  --accent:#4f7ef8;--accent2:#7c3aed;--green:#22c55e;--yellow:#eab308;--red:#ef4444;
+  --text:#e2e8f0;--text-dim:#64748b;--text-mid:#94a3b8;--radius:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Header ── */
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.logo{font-size:15px;font-weight:700}.logo span{color:var(--accent)}
+.header-center{display:flex;align-items:center;gap:12px}
+.turn-label{font-size:12px;color:var(--text-dim)}
+.progress-bar{width:120px;height:6px;background:var(--border);border-radius:99px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:99px;transition:width .4s ease}
+.db-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.db-ok{background:#0f2e16;color:#86efac;border:1px solid #166534}
+.db-err{background:#2e1010;color:#fca5a5;border:1px solid #7f1d1d}
+.db-pending{background:var(--surface2);color:var(--text-dim);border:1px solid var(--border)}
+.lang-toggle{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.lang-toggle:hover{background:var(--border)}
+
+/* ── World selector ── */
+.world-tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;flex-shrink:0}
+.world-tab{padding:11px 20px;font-size:13px;font-weight:700;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:7px;transition:all .15s}
+.world-tab:hover{color:var(--text)}
+.world-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.world-tab.completed{color:var(--green)}
+.world-tab.completed::after{content:' ✓';font-size:11px}
+
+/* ── Sub-scene tabs (for rental) ── */
+.sub-tabs{display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:0 24px;flex-shrink:0}
+.sub-tabs.visible{display:flex}
+.sub-tab{padding:9px 16px;font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;transition:all .15s}
+.sub-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.sub-tab.done{color:var(--green)}
+
+/* ── Main layout ── */
+main{flex:1;display:grid;grid-template-columns:1fr 340px;overflow:hidden;min-height:0}
+.scene-area{display:flex;flex-direction:column;overflow:hidden}
+.scene-panel{flex:1;padding:20px 24px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
+.scene-visual{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+.scene-icon{font-size:36px;flex-shrink:0}
+.scene-desc h3{font-size:14px;color:var(--text-mid);font-weight:500}
+.scene-desc p{font-size:12px;color:var(--text-dim);margin-top:2px}
+.context-strip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-mid);line-height:1.5;display:flex;gap:8px;align-items:flex-start;flex-shrink:0}
+.ctx-icon{font-size:14px;margin-top:1px;flex-shrink:0}
+.dialogue-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 22px;flex-shrink:0}
+.speaker-tag{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+.cashier-speech{font-size:20px;font-weight:600;line-height:1.4}
+.speech-sub{font-size:12px;color:var(--text-dim);background:var(--surface2);padding:5px 10px;border-radius:6px;display:none;margin-top:6px}
+.hint-box{display:none;background:#1e2d1a;border:1px solid #2d5a1b;border-radius:8px;padding:10px 14px;font-size:12px;color:#86efac;margin-top:8px;line-height:1.5}
+.hint-box.visible{display:block}
+.dialogue-controls{display:flex;gap:8px;margin-top:12px}
+.btn{display:flex;align-items:center;gap:5px;padding:7px 13px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s}
+.btn-play{background:var(--accent);color:white}.btn-play:hover{opacity:.85}
+.btn-hint{background:var(--surface2);color:var(--text-mid);border:1px solid var(--border)}.btn-hint:hover{background:var(--border);color:var(--text)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── 元认知 ── */
+.meta-check{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;flex-shrink:0}
+.meta-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.meta-title{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--accent2);text-transform:uppercase}
+.meta-optional{font-size:10px;color:var(--text-dim);background:var(--surface2);padding:2px 7px;border-radius:4px;margin-left:2px}
+.meta-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.meta-row:last-child{margin-bottom:0}
+.meta-q{font-size:12px;color:var(--text-mid);flex-shrink:0;margin-right:10px}
+.meta-pills{display:flex;gap:5px;flex-wrap:wrap}
+.meta-pill{padding:3px 11px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:11px;cursor:pointer;transition:all .15s}
+.meta-pill:hover{border-color:var(--accent2);color:var(--text)}
+.meta-pill.au-yes{border-color:var(--green);background:#0f2e16;color:#86efac}
+.meta-pill.au-partial{border-color:var(--yellow);background:#1e1e10;color:#fde047}
+.meta-pill.au-no{border-color:var(--red);background:#2e1010;color:#fca5a5}
+.meta-pill.ap-true{border-color:var(--accent);background:#0f1a3a;color:#93c5fd}
+.meta-pill.ap-false{border-color:var(--border);background:var(--surface2);color:var(--text-mid)}
+/* meta pills always interactive — no answered lock */
+
+/* ── Options ── */
+.options-section{flex-shrink:0}
+.options-label{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px}
+.options-list{display:flex;flex-direction:column;gap:7px}
+.option-btn{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:12px 16px;text-align:left;color:var(--text);font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:flex-start;gap:9px;width:100%}
+.option-btn:hover:not(:disabled){background:var(--surface2);border-color:var(--accent)}
+.option-btn:disabled{cursor:not-allowed;opacity:.65}
+.option-letter{font-weight:700;color:var(--accent);min-width:16px;font-size:12px;margin-top:1px}
+.option-btn.sel-good{background:#0f2e16;border-color:var(--green)}.option-btn.sel-good .option-letter{color:var(--green)}
+.option-btn.sel-neutral{background:#1e1e10;border-color:var(--yellow)}.option-btn.sel-neutral .option-letter{color:var(--yellow)}
+.option-btn.sel-avoidant{background:#2e1010;border-color:var(--red)}.option-btn.sel-avoidant .option-letter{color:var(--red)}
+.feedback-box{display:none;padding:12px 14px;border-radius:8px;font-size:12px;line-height:1.5;margin-top:4px}
+.feedback-box.visible{display:block}
+.fb-good{background:#0f2e16;border:1px solid #166534;color:#86efac}
+.fb-neutral{background:#1e1e10;border:1px solid #713f12;color:#fde047}
+.fb-avoidant{background:#2e1010;border:1px solid #7f1d1d;color:#fca5a5}
+.next-btn{background:var(--accent);color:white;border:none;border-radius:8px;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;display:none;margin-top:8px}
+.next-btn:hover{opacity:.85}.next-btn.visible{display:inline-flex;align-items:center;gap:6px}
+
+/* ── Right Panel ── */
+.right-panel{display:flex;flex-direction:column;overflow-y:auto;background:var(--surface);border-left:1px solid var(--border)}
+.panel-section{padding:16px 18px;border-bottom:1px solid var(--border)}
+.panel-title{font-size:10px;font-weight:700;letter-spacing:.10em;color:var(--text-dim);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:5px}
+.signal-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.signal-card{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 11px}
+.signal-key{font-size:10px;color:var(--text-dim);margin-bottom:2px;font-weight:600}
+.signal-val{font-size:16px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.signal-val.active{color:var(--accent)}.signal-val.warning{color:var(--yellow)}.signal-val.good{color:var(--green)}
+.ucp-list{display:flex;flex-direction:column;gap:10px}
+.ucp-dim{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px 13px;transition:opacity .3s}
+.ucp-dim.inactive{opacity:.35}
+.ucp-dim-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px}
+.ucp-dim-name{font-size:11px;font-weight:600;color:var(--text)}
+.ucp-dim-meta{font-size:9px;color:var(--text-dim)}
+.ucp-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:var(--surface2);color:var(--text-mid)}
+.ucp-bar-track{height:5px;background:var(--border);border-radius:99px;overflow:hidden;margin:6px 0 3px}
+.ucp-bar-fill{height:100%;border-radius:99px;transition:width .6s cubic-bezier(.34,1.56,.64,1)}
+.ucp-bar-fill.high{background:var(--green)}.ucp-bar-fill.mid{background:var(--yellow)}.ucp-bar-fill.low{background:var(--red)}
+.ucp-row{display:flex;justify-content:space-between;align-items:center}
+.ucp-score{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.ucp-evidence{font-size:9px;color:var(--text-dim)}
+.ucp-trend{font-size:10px;font-weight:700}.ucp-trend.up{color:var(--green)}.ucp-trend.down{color:var(--red)}.ucp-trend.stable{color:var(--text-dim)}
+.delta-flash{font-size:9px;font-weight:700;display:inline-block;animation:fadeUp 1.2s ease forwards;margin-left:3px}
+@keyframes fadeUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-8px)}}
+.ucp-group-label{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);text-transform:uppercase;margin:8px 0 5px;padding-left:2px}
+
+/* ── Report ── */
+.report-wrap{display:none;padding:24px;flex-direction:column;gap:18px;overflow-y:auto}
+.report-wrap.visible{display:flex}
+.report-header{text-align:center;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.report-header h2{font-size:20px;margin-bottom:5px}
+.report-header p{font-size:12px;color:var(--text-mid)}
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.report-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.report-card h4{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin-bottom:7px;font-weight:700}
+.report-card p{font-size:12px;color:var(--text-mid);line-height:1.5}
+.weakness-item{background:#2e1010;border:1px solid #7f1d1d;border-radius:7px;padding:9px 12px;margin-bottom:5px}
+.weakness-item h5{font-size:12px;color:#fca5a5;font-weight:700}
+.weakness-item p{font-size:11px;color:#fca5a588;margin-top:2px}
+.strength-item{background:#0f2e16;border:1px solid #166534;border-radius:7px;padding:9px 12px;margin-bottom:5px}
+.strength-item h5{font-size:12px;color:#86efac;font-weight:700}
+.strength-item p{font-size:11px;color:#86efac88;margin-top:2px}
+.diagnosis-box{background:#1a1040;border:1px solid var(--accent2);border-radius:var(--radius);padding:18px;grid-column:1/-1}
+.diagnosis-box h4{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent2);font-weight:700;margin-bottom:8px}
+.diagnosis-box p{font-size:12px;color:var(--text-mid);line-height:1.6}
+.restart-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 18px;font-size:12px;font-weight:600;cursor:pointer;align-self:flex-start}
+.restart-btn:hover{background:var(--border)}
+
+/* ── Debug ── */
+.debug-strip{background:var(--surface2);border-top:1px solid var(--border);padding:6px 24px;font-size:10px;color:var(--text-dim);display:flex;gap:14px;font-family:'SF Mono','Fira Code',monospace;flex-wrap:wrap;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">英留<span>模拟器</span> <span style="color:var(--text-dim);font-size:11px;font-weight:400;margin-left:5px">· UK Life Simulator</span></div>
+  <div class="header-center">
+    <span class="turn-label" id="turn-label">—</span>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <span id="db-badge" class="db-badge db-pending">⏳ 连接中</span>
+  </div>
+  <button class="lang-toggle" id="lang-toggle" onclick="toggleLang()">EN</button>
+</header>
+
+<!-- World tabs -->
+<div class="world-tabs">
+  <div class="world-tab active" data-world="supermarket" onclick="switchWorld('supermarket')">🛒 <span data-cn="超市结账" data-en="Supermarket">超市结账</span></div>
+  <div class="world-tab" data-world="rental" onclick="switchWorld('rental')">🏠 <span data-cn="租房全程" data-en="Rental Housing">租房全程</span></div>
+</div>
+
+<!-- Sub-tabs for rental -->
+<div class="sub-tabs" id="sub-tabs">
+  <div class="sub-tab active" data-sub="0">🏠 <span data-cn="看房" data-en="Viewing">看房</span></div>
+  <div class="sub-tab" data-sub="1">🏢 <span data-cn="前台" data-en="Reception">前台</span></div>
+  <div class="sub-tab" data-sub="2">🔧 <span data-cn="报修" data-en="Maintenance">报修</span></div>
+  <div class="sub-tab" data-sub="3">📄 <span data-cn="续租" data-en="Renewal">续租</span></div>
+</div>
+
+<main>
+  <!-- Left: scene area -->
+  <div class="scene-area">
+    <div class="scene-panel" id="scene-panel">
+
+      <div class="scene-visual">
+        <div class="scene-icon" id="scene-icon">🛒</div>
+        <div class="scene-desc">
+          <h3 id="scene-title"></h3>
+          <p id="scene-sub"></p>
+        </div>
+      </div>
+
+      <div class="context-strip" id="context-strip" style="display:none">
+        <span class="ctx-icon">💡</span>
+        <span id="context-text"></span>
+      </div>
+
+      <div class="dialogue-box">
+        <div class="speaker-tag" id="speaker-tag">收银员 说</div>
+        <div class="cashier-speech" id="cashier-speech"></div>
+        <div class="speech-sub" id="speech-sub"></div>
+        <div class="hint-box" id="hint-box"></div>
+        <div class="dialogue-controls">
+          <button class="btn btn-play" id="btn-play" onclick="playAudio()">🔊 <span data-cn="播放" data-en="Play">播放</span></button>
+          <button class="btn btn-hint" id="btn-hint" onclick="useHint()">📖 <span data-cn="提示" data-en="Hint">提示</span></button>
+        </div>
+      </div>
+
+      <!-- 元认知自评 -->
+      <div class="meta-check" id="meta-check">
+        <div class="meta-header">
+          <span class="meta-title" data-cn="自我评估" data-en="SELF-CHECK">自我评估</span>
+          <span class="meta-optional" data-cn="选填·不影响评分" data-en="optional">选填·不影响评分</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-q" data-cn="我实际上听懂了多少？" data-en="How much did I understand?">我实际上听懂了多少？</span>
+          <div class="meta-pills" id="pills-understood">
+            <button class="meta-pill" data-val="yes" onclick="setMeta('understood','yes')" data-cn="听懂了" data-en="Got it">听懂了</button>
+            <button class="meta-pill" data-val="partial" onclick="setMeta('understood','partial')" data-cn="部分懂" data-en="Partly">部分懂</button>
+            <button class="meta-pill" data-val="no" onclick="setMeta('understood','no')" data-cn="没听懂" data-en="Lost">没听懂</button>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="meta-q" data-cn="我有没有预判对方会说什么？" data-en="Did I predict what they'd say?">我有没有预判对方会说什么？</span>
+          <div class="meta-pills" id="pills-predicted">
+            <button class="meta-pill" data-val="true" onclick="setMeta('predicted',true)" data-cn="有预判" data-en="Yes">有预判</button>
+            <button class="meta-pill" data-val="false" onclick="setMeta('predicted',false)" data-cn="没有" data-en="No">没有</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="options-section">
+        <div class="options-label" data-cn="你的回应 — 选择一项" data-en="YOUR RESPONSE — pick one">你的回应 — 选择一项</div>
+        <div class="options-list" id="options-list"></div>
+        <div class="feedback-box" id="feedback-box"></div>
+        <button class="next-btn" id="next-btn" onclick="nextTurn()"><span id="next-btn-text">下一轮 →</span></button>
+      </div>
+
+    </div>
+
+    <!-- Report -->
+    <div class="report-wrap" id="report-wrap">
+      <div class="report-header">
+        <h2 id="report-title">🎯 场景完成</h2>
+        <p id="report-sub" data-cn="基于行为信号生成，数据已保存至云端" data-en="Generated from behavioral signals — saved to cloud">基于行为信号生成，数据已保存至云端</p>
+      </div>
+      <div class="report-grid" id="report-grid"></div>
+      <div style="display:flex;gap:10px">
+        <button class="restart-btn" onclick="restartScene()">↩ <span data-cn="重玩本场景" data-en="Replay Scene">重玩本场景</span></button>
+        <button class="restart-btn" id="other-scene-btn" onclick="goOtherScene()" style="background:var(--accent);border-color:var(--accent);color:white"></button>
+      </div>
+    </div>
+
+    <div class="debug-strip">
+      <span>session: <span id="dbg-session">—</span></span>
+      <span>world: <span id="dbg-world">—</span></span>
+      <span>signals: <span id="dbg-signals">0</span></span>
+      <span>db_writes: <span id="dbg-writes">0</span></span>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+    <div class="panel-section">
+      <div class="panel-title">📡 <span data-cn="实时信号" data-en="Live Signals">实时信号</span></div>
+      <div class="signal-grid">
+        <div class="signal-card"><div class="signal-key" data-cn="反应时间" data-en="Reaction Time">反应时间</div><div class="signal-val active" id="sig-timer">0.0s</div></div>
+        <div class="signal-card"><div class="signal-key" data-cn="重听次数" data-en="Replays">重听次数</div><div class="signal-val" id="sig-replay">0</div></div>
+        <div class="signal-card"><div class="signal-key" data-cn="元认知·理解" data-en="Meta: Understood">元认知·理解</div><div class="signal-val" id="sig-meta-u">—</div></div>
+        <div class="signal-card"><div class="signal-key" data-cn="元认知·预判" data-en="Meta: Predicted">元认知·预判</div><div class="signal-val" id="sig-meta-p">—</div></div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">📊 <span data-cn="本场景累计" data-en="Session Stats">本场景累计</span></div>
+      <div class="signal-grid">
+        <div class="signal-card"><div class="signal-key" data-cn="均值反应" data-en="Avg RT">均值反应</div><div class="signal-val" id="cum-rt">—</div></div>
+        <div class="signal-card"><div class="signal-key" data-cn="总提示" data-en="Hints">总提示</div><div class="signal-val" id="cum-hints">0</div></div>
+        <div class="signal-card"><div class="signal-key" data-cn="总重听" data-en="Replays">总重听</div><div class="signal-val" id="cum-replays">0</div></div>
+        <div class="signal-card"><div class="signal-key" data-cn="回避次数" data-en="Avoidant">回避次数</div><div class="signal-val" id="cum-avoidant">0</div></div>
+      </div>
+    </div>
+    <div class="panel-section" style="flex:1">
+      <div class="panel-title">🧠 <span data-cn="用户能力画像 (UCP)" data-en="User Capability Profile">用户能力画像 (UCP)</span></div>
+      <div class="ucp-list" id="ucp-list"></div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+// ═══════════════════════════════════════════
+//  SUPABASE
+// ═══════════════════════════════════════════
+const SUPABASE_URL  = 'https://gkzgxittqsvvoxgrnezv.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdremd4aXR0cXN2dm94Z3JuZXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1OTMzMjEsImV4cCI6MjA5ODE2OTMyMX0.04Rg9VKvyFOYIJSI_mszyG4oL4FEbtRF4as0Jb6f9HM';
+let db=null, dbWriteCount=0;
+async function initDB(){
+  try{
+    db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
+    const{error}=await db.from('sessions').select('id').limit(1);
+    if(error&&error.code!=='PGRST116')throw error;
+    setBadge('ok');
+  }catch(e){setBadge('err');db=null;}
+}
+function setBadge(s){
+  const el=document.getElementById('db-badge');
+  if(s==='ok'){el.className='db-badge db-ok';el.textContent='✓ 已连接';}
+  if(s==='err'){el.className='db-badge db-err';el.textContent='✗ 离线模式';}
+}
+async function dbWrite(table,data){
+  if(!db)return;
+  try{await db.from(table).insert(data);dbWriteCount++;document.getElementById('dbg-writes').textContent=dbWriteCount;}
+  catch(e){}
+}
+async function saveSession(id,sceneId,completed,extra={}){
+  if(!db)return;
+  try{
+    await db.from('sessions').upsert({id,scene_id:sceneId,lang,created_at:new Date().toISOString(),...(completed?{completed_at:new Date().toISOString(),...extra}:{})});
+    dbWriteCount++;document.getElementById('dbg-writes').textContent=dbWriteCount;
+  }catch(e){}
+}
+
+// ═══════════════════════════════════════════
+//  LANGUAGE
+// ═══════════════════════════════════════════
+let lang='zh';
+function toggleLang(){
+  lang=lang==='zh'?'en':'zh';
+  document.getElementById('lang-toggle').textContent=lang==='zh'?'EN':'中';
+  document.querySelectorAll('[data-cn]').forEach(el=>el.textContent=lang==='zh'?el.dataset.cn:el.dataset.en);
+  renderUCP();renderOptions();
+}
+function t(cn,en){return lang==='zh'?cn:en;}
+
+// ═══════════════════════════════════════════
+//  SCENARIO DATA
+// ═══════════════════════════════════════════
+const WORLDS = {
+  supermarket:{
+    id:'supermarket_checkout',
+    icon:'🛒', title_cn:'Tesco · 超市结账', title_en:'Tesco · Checkout Counter',
+    sub_cn:'你已结完购物，正在与收银员结账', sub_en:"You've finished shopping at Tesco",
+    context:null,
+    activeDims:['dim_001','dim_002','dim_003','dim_004'],
+    turns:[
+      {cashier:"Hi there! Do you have a Tesco Clubcard with you today?",subtext:null,speaker_cn:'收银员 说',speaker_en:'CASHIER',
+       hint:'"Clubcard" 是 Tesco 会员积分卡，学生无需办理。/ "Clubcard" is Tesco\'s loyalty card — students don\'t need one.',
+       options:[{letter:'A',text:"No, I don't have one, sorry.",quality:'good'},{letter:'B',text:"Yes, here you go!",quality:'good'},{letter:'C',text:"What's a Clubcard?",quality:'avoidant'}],
+       feedback:{good:'✓ 自然流畅！清晰表明有无会员卡。',neutral:'',avoidant:'✗ "Clubcard"是英国超市基本词汇，追问会显得不熟悉日常生活。'},
+       sw:{onHint:{dim_003:-0.12},onReplay:{dim_001:-0.06},onChoice:{A:{dim_003:+0.10},B:{dim_003:+0.10},C:{dim_003:-0.10}},onSlow:{dim_003:-0.06}}},
+      {cashier:"That'll be seven forty-nine, please.",subtext:"🧾 Receipt: £7.49",speaker_cn:'收银员 说',speaker_en:'CASHIER',
+       hint:'"Seven forty-nine" = £7.49，英国口语省略"pounds"。',
+       options:[{letter:'A',text:"Here's a tenner.",quality:'good'},{letter:'B',text:"Sorry — how much was that?",quality:'avoidant'},{letter:'C',text:"Can I pay by card?",quality:'neutral'}],
+       feedback:{good:'✓ "A tenner" 非常地道！说明你听懂了价格，也掌握英镑俚语。',neutral:'△ 用卡没问题，但若因没听清才转移话题，这是个信号。',avoidant:'✗ 口语化价格是留学生常见卡壳点——"seven forty-nine"表示£7.49。'},
+       sw:{onHint:{dim_001:-0.15,dim_002:-0.10},onReplay:{dim_001:-0.10},onChoice:{A:{dim_001:+0.15,dim_002:+0.12},B:{dim_001:-0.14},C:{dim_001:-0.05}},onSlow:{dim_001:-0.08}}},
+      {cashier:"Do you need any carrier bags? They're ten p each.",subtext:null,speaker_cn:'收银员 说',speaker_en:'CASHIER',
+       hint:'"Ten p" = 10便士 = £0.10，"p" 是 pence 的口语缩写。',
+       options:[{letter:'A',text:"No thanks, I've brought my own.",quality:'good'},{letter:'B',text:"Yes please, two bags.",quality:'good'},{letter:'C',text:"Sorry — ten what?",quality:'avoidant'}],
+       feedback:{good:'✓ 完美！清晰表达需求。',neutral:'',avoidant:'✗ "ten p"是英国货币日常口语，理解它很重要。'},
+       sw:{onHint:{dim_002:-0.15,dim_003:-0.08},onReplay:{dim_002:-0.08},onChoice:{A:{dim_002:+0.10,dim_003:+0.08},B:{dim_002:+0.10,dim_003:+0.08},C:{dim_002:-0.14,dim_003:-0.08}},onSlow:{dim_002:-0.05}}},
+      {cashier:"Here's your change — two fifty-one. Have a lovely one!",subtext:"💷 Change: £2.51",speaker_cn:'收银员 说',speaker_en:'CASHIER',
+       hint:'"Two fifty-one"=£2.51。"Have a lovely one"=英式告别语，相当于"祝你今天愉快"。',
+       options:[{letter:'A',text:"Thank you, you too!",quality:'good'},{letter:'B',text:"Thanks.",quality:'neutral'},{letter:'C',text:"What does 'lovely one' mean?",quality:'avoidant'}],
+       feedback:{good:'✓ 自然的礼貌回应，"you too"在这个语境完全正确。',neutral:'△ 简短但礼貌，可以更自然加上"you too"。',avoidant:'✗ 对告别语发问会打断对话——这类社交公式需要提前积累。'},
+       sw:{onHint:{dim_002:-0.12,dim_004:-0.10},onReplay:{dim_001:-0.07},onChoice:{A:{dim_004:+0.18,dim_002:+0.06},B:{dim_004:-0.05},C:{dim_002:-0.12,dim_004:-0.12}},onSlow:{dim_004:-0.06}}},
+    ]
+  },
+  rental:{
+    id:'rental_housing',
+    activeDims:['dim_005','dim_006','dim_007','dim_008'],
+    turns:[
+      {icon:'🏠',title_cn:'看房场景',title_en:'Property Viewing',sub_cn:'你正在看一间学生公寓，与房东沟通',sub_en:"Viewing a student flat",
+       context_cn:'提前了解租金、押金、账单包含情况很重要',context_en:"Ask about rent, deposit, and what bills are included",
+       speaker_cn:'房东 说',speaker_en:'LANDLORD',
+       cashier:"It's eight hundred a month — all bills included. Council tax is exempt because it's student accommodation, so you won't have to worry about that.",
+       hint:'"Council tax"是英国地方政府税，学生公寓免税（需提供在读证明）。"All bills included"意味着电气水费全包。',
+       options:[{letter:'A',text:"That sounds great. Is there a minimum tenancy period?",quality:'good'},{letter:'B',text:"OK. What does 'council tax' mean?",quality:'avoidant'},{letter:'C',text:"I see.",quality:'neutral'}],
+       feedback:{good:'✓ 直接问租期条款，展现了解租房合同。',neutral:'△ 回应太短，是建立信任的好机会。',avoidant:'✗ Council tax免税是留学生基本常识，追问会给房东留下不熟悉情况的印象。'},
+       sw:{onHint:{dim_005:-0.15,dim_008:-0.08},onReplay:{dim_005:-0.08},onChoice:{A:{dim_005:+0.12,dim_008:+0.10},B:{dim_005:-0.12},C:{dim_005:-0.06}},onSlow:{dim_005:-0.05}}},
+      {icon:'🏢',title_cn:'前台场景',title_en:'Building Reception',sub_cn:'你刚搬进学生宿舍，到前台询问信息',sub_en:"Just moved in — at reception",
+       context_cn:'前台负责包裹、设施和维修申请等事务',context_en:"Reception handles parcels, facilities and maintenance",
+       speaker_cn:'前台 说',speaker_en:'RECEPTIONIST',
+       cashier:"Hi! Your post will go in the pigeonholes just round the corner — they're sorted by flat number. And if you need anything fixing, just drop a maintenance request on the portal.",
+       hint:'"Pigeonholes"是公共区域分格信箱（按公寓号分类）。"Drop a maintenance request"=在系统提交报修申请。',
+       options:[{letter:'A',text:"Got it, thanks! And where exactly are the pigeonholes?",quality:'good'},{letter:'B',text:"Sorry, what's a pigeonhole?",quality:'avoidant'},{letter:'C',text:"OK, thanks.",quality:'neutral'}],
+       feedback:{good:'✓ 确认了解信息，并跟进问位置——高效的沟通。',neutral:'△ 礼貌但错过了获取细节的机会。',avoidant:'✗ "Pigeonhole"是学生宿舍通用词，不了解会显得不熟悉宿舍环境。'},
+       sw:{onHint:{dim_006:-0.15,dim_008:-0.08},onReplay:{dim_006:-0.08},onChoice:{A:{dim_006:+0.12,dim_008:+0.08},B:{dim_006:-0.14},C:{dim_006:-0.06}},onSlow:{dim_006:-0.05}}},
+      {icon:'🔧',title_cn:'报修场景',title_en:'Boiler Breakdown',sub_cn:'锅炉坏了，打电话给房屋中介',sub_en:"Boiler broken — calling the letting agent",
+       context_cn:'英国租房中，boiler问题必须通知letting agent，通常1-2工作日处理',context_en:"Boiler issues must be reported to the letting agent",
+       speaker_cn:'中介 说',speaker_en:'LETTING AGENT',
+       cashier:"Oh right, so the boiler's playing up again, is it? I'll send someone round tomorrow between nine and one — will someone be in to let them in?",
+       hint:'"Playing up"=英式俚语，出故障/运作异常。"Send someone round"=派人过来。"Let them in"=给维修工开门。',
+       options:[{letter:'A',text:"Yes, I'll be in all morning. Could I get a confirmation text?",quality:'good'},{letter:'B',text:"Sorry — what does 'playing up' mean?",quality:'avoidant'},{letter:'C',text:"Tomorrow is fine.",quality:'neutral'}],
+       feedback:{good:'✓ 确认到场并要短信确认——务实专业的回应。',neutral:'△ 没有确认短信，沟通存在隐患。',avoidant:'✗ "Playing up"在报修场景极常见，不了解会让沟通卡壳。'},
+       sw:{onHint:{dim_006:-0.12,dim_007:-0.10},onReplay:{dim_006:-0.08},onChoice:{A:{dim_007:+0.15,dim_006:+0.08},B:{dim_006:-0.12},C:{dim_007:-0.08}},onSlow:{dim_007:-0.06}}},
+      {icon:'📄',title_cn:'续租场景',title_en:'Lease Renewal',sub_cn:'租约快到期，与房东洽谈续租',sub_en:"Negotiating lease renewal",
+       context_cn:'续租谈判是B2+语用挑战——你需要能主张自己的立场',context_en:"Renewal is a B2+ pragmatic challenge — assert your position",
+       speaker_cn:'房东 说',speaker_en:'LANDLORD',
+       cashier:"I was thinking of putting the rent up by fifty quid — to eight-fifty. But if you're happy to just roll it over, we can keep it as is for another year.",
+       hint:'"Fifty quid"=£50（英式俚语）。"Roll it over"=直接延续现有合同。"Put the rent up"=涨租。',
+       options:[{letter:'A',text:"I'd prefer to keep it at eight hundred if possible — I've been a reliable tenant and I'd like to stay long-term.",quality:'good'},{letter:'B',text:"Oh, what's 'quid'?",quality:'avoidant'},{letter:'C',text:"OK, that's fine.",quality:'neutral'}],
+       feedback:{good:'✓ 用事实（可靠租客、长期意愿）支撑立场，B2+语用技能体现。',neutral:'△ 立刻接受涨租，没有协商——错过了维护自身权益的机会。',avoidant:'✗ "Quid"是英镑最基本的俚语，不了解会完全误解金额。'},
+       sw:{onHint:{dim_006:-0.18,dim_005:-0.10},onReplay:{dim_006:-0.08,dim_005:-0.05},onChoice:{A:{dim_007:+0.20,dim_005:+0.08},B:{dim_006:-0.18},C:{dim_007:-0.12}},onSlow:{dim_007:-0.06}}},
+    ]
+  }
+};
+
+// ═══════════════════════════════════════════
+//  UCP (unified across both scenes)
+// ═══════════════════════════════════════════
+const UCP_META={
+  dim_001:{name_cn:'数字/价格听力',name_en:'Price/Number Listening',category:'Listening',cefr:'A2-B1',world:'supermarket'},
+  dim_002:{name_cn:'英式口语表达',name_en:'British Colloquialisms',category:'Vocabulary',cefr:'B1',world:'supermarket'},
+  dim_003:{name_cn:'服务场景词汇',name_en:'Service Vocab',category:'Vocabulary',cefr:'A2',world:'supermarket'},
+  dim_004:{name_cn:'语用流利度',name_en:'Pragmatic Fluency',category:'Pragmatics',cefr:'B1',world:'supermarket'},
+  dim_005:{name_cn:'租房/法律词汇',name_en:'Housing & Legal Vocab',category:'Vocabulary',cefr:'B1-B2',world:'rental'},
+  dim_006:{name_cn:'英式生活俚语',name_en:'British Daily Slang',category:'Vocabulary',cefr:'B1',world:'rental'},
+  dim_007:{name_cn:'谈判/主张表达',name_en:'Assertive Communication',category:'Pragmatics',cefr:'B2',world:'rental'},
+  dim_008:{name_cn:'日常行政词汇',name_en:'Admin & Logistics Vocab',category:'Vocabulary',cefr:'A2-B1',world:'rental'},
+};
+let ucp={
+  dim_001:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_002:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_003:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_004:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_005:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_006:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_007:{confidence_score:.50,evidence_count:0,trend:'stable'},
+  dim_008:{confidence_score:.50,evidence_count:0,trend:'stable'},
+};
+
+// ═══════════════════════════════════════════
+//  APP STATE
+// ═══════════════════════════════════════════
+let currentWorld='supermarket', currentTurn=0, choiceMade=false;
+let turnStartTime=null, timerInterval=null;
+let turnSignals={reaction_time:null,replay_count:0,hint_clicks:0,choice:null};
+let metaState={understood:null,predicted:null};
+let cumulative={hints:0,replays:0,avoidant:0,rts:[]};
+let totalSignals=0, sessionId='ses_'+Math.random().toString(36).slice(2,9);
+let sessionStart=new Date().toISOString();
+let completedWorlds={supermarket:false,rental:false};
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+async function init(){
+  document.getElementById('dbg-session').textContent=sessionId;
+  await initDB();
+  await saveSession(sessionId,'combined_demo',false);
+  renderUCP();
+  loadWorld('supermarket',0);
+}
+
+// ═══════════════════════════════════════════
+//  WORLD / SCENE SWITCHING
+// ═══════════════════════════════════════════
+function switchWorld(w){
+  if(w===currentWorld)return;
+  // save progress of current session before switching
+  currentWorld=w;
+  currentTurn=0; choiceMade=false; resetCumulative();
+  document.querySelectorAll('.world-tab').forEach(t=>t.classList.toggle('active',t.dataset.world===w));
+  document.getElementById('sub-tabs').classList.toggle('visible',w==='rental');
+  document.getElementById('report-wrap').classList.remove('visible');
+  document.getElementById('scene-panel').style.display='';
+  loadWorld(w,0);
+}
+function resetCumulative(){
+  cumulative={hints:0,replays:0,avoidant:0,rts:[]};
+  totalSignals=0;
+  ['cum-hints','cum-replays','cum-avoidant'].forEach(id=>{const el=document.getElementById(id);el.textContent='0';el.className='signal-val';});
+  document.getElementById('cum-rt').textContent='—';
+  document.getElementById('dbg-signals').textContent='0';
+}
+function updateSubTabs(){
+  if(currentWorld!=='rental')return;
+  const turns=WORLDS.rental.turns;
+  document.querySelectorAll('.sub-tab').forEach((tab,i)=>{
+    tab.classList.remove('active','done');
+    if(i===currentTurn) tab.classList.add('active');
+    else if(i<currentTurn) tab.classList.add('done');
+  });
+}
+function loadWorld(w,turnIdx){
+  currentWorld=w; currentTurn=turnIdx; choiceMade=false;
+  turnSignals={reaction_time:null,replay_count:0,hint_clicks:0,choice:null};
+  metaState={understood:null,predicted:null};
+  document.getElementById('dbg-world').textContent=w;
+
+  const world=WORLDS[w];
+  const turns=world.turns;
+  const turn=turns[turnIdx];
+
+  // Update progress
+  const pct=(turnIdx/turns.length)*100;
+  document.getElementById('progress-fill').style.width=pct+'%';
+  const turnCount=`${t('第','Turn ')}${turnIdx+1}${t(' / ','/')}${turns.length}${t(' 轮','')}`;
+  document.getElementById('turn-label').textContent=turnCount;
+
+  // Scene visual
+  if(w==='supermarket'){
+    document.getElementById('scene-icon').textContent=world.icon;
+    const st=document.getElementById('scene-title'); st.dataset.cn=world.title_cn; st.dataset.en=world.title_en; st.textContent=lang==='zh'?world.title_cn:world.title_en;
+    const ss=document.getElementById('scene-sub'); ss.dataset.cn=world.sub_cn; ss.dataset.en=world.sub_en; ss.textContent=lang==='zh'?world.sub_cn:world.sub_en;
+    document.getElementById('context-strip').style.display='none';
+  } else {
+    document.getElementById('scene-icon').textContent=turn.icon;
+    const st=document.getElementById('scene-title'); st.dataset.cn=turn.title_cn; st.dataset.en=turn.title_en; st.textContent=lang==='zh'?turn.title_cn:turn.title_en;
+    const ss=document.getElementById('scene-sub'); ss.dataset.cn=turn.sub_cn; ss.dataset.en=turn.sub_en; ss.textContent=lang==='zh'?turn.sub_cn:turn.sub_en;
+    const ctx=document.getElementById('context-strip'); ctx.style.display='flex';
+    const ct=document.getElementById('context-text'); ct.dataset.cn=turn.context_cn; ct.dataset.en=turn.context_en; ct.textContent=lang==='zh'?turn.context_cn:turn.context_en;
+    updateSubTabs();
+  }
+
+  // Speaker & dialogue
+  const spk=document.getElementById('speaker-tag');
+  spk.dataset.cn=turn.speaker_cn; spk.dataset.en=turn.speaker_en;
+  spk.textContent=lang==='zh'?turn.speaker_cn:turn.speaker_en;
+  document.getElementById('cashier-speech').textContent=turn.cashier;
+  const sub=document.getElementById('speech-sub');
+  if(turn.subtext){sub.textContent=turn.subtext;sub.style.display='inline-block';}
+  else sub.style.display='none';
+
+  // Reset hint/feedback/meta
+  const hb=document.getElementById('hint-box'); hb.textContent=''; hb.classList.remove('visible');
+  document.getElementById('btn-hint').disabled=false;
+  document.getElementById('feedback-box').textContent=''; document.getElementById('feedback-box').className='feedback-box';
+  document.getElementById('next-btn').classList.remove('visible');
+  document.getElementById('sig-replay').textContent='0'; document.getElementById('sig-replay').className='signal-val';
+  document.getElementById('meta-check').classList.remove('answered');
+  ['pills-understood','pills-predicted'].forEach(id=>{
+    document.getElementById(id).querySelectorAll('.meta-pill').forEach(p=>p.className='meta-pill');
+  });
+  document.getElementById('sig-meta-u').textContent='—'; document.getElementById('sig-meta-u').className='signal-val';
+  document.getElementById('sig-meta-p').textContent='—'; document.getElementById('sig-meta-p').className='signal-val';
+
+  // Next button label
+  const nbt=document.getElementById('next-btn-text');
+  const isLast=turnIdx===turns.length-1;
+  if(w==='supermarket') nbt.textContent=isLast?t('查看报告 →','View Report →'):t('下一轮 →','Next →');
+  else nbt.textContent=isLast?t('查看报告 →','View Report →'):t('下一场景 →','Next Scene →');
+
+  renderOptions(); renderUCP();
+  startTimer();
+  autoPlay(turn.cashier);
+}
+
+// ═══════════════════════════════════════════
+//  OPTIONS
+// ═══════════════════════════════════════════
+function renderOptions(){
+  const world=WORLDS[currentWorld]; if(!world)return;
+  const turn=world.turns[currentTurn]; if(!turn)return;
+  const list=document.getElementById('options-list'); list.innerHTML='';
+  turn.options.forEach((opt,i)=>{
+    const btn=document.createElement('button');
+    btn.className='option-btn'; btn.disabled=choiceMade;
+    btn.innerHTML=`<span class="option-letter">${opt.letter}</span>${opt.text}`;
+    btn.onclick=()=>selectOption(i,opt.letter,opt.quality);
+    list.appendChild(btn);
+  });
+}
+
+function selectOption(idx,letter,quality){
+  if(choiceMade)return;
+  choiceMade=true; stopTimer();
+  turnSignals.choice=letter;
+  turnSignals.reaction_time=parseFloat(document.getElementById('sig-timer').textContent);
+
+  document.querySelectorAll('.option-btn').forEach((btn,i)=>{
+    btn.disabled=true;
+    if(i===idx) btn.classList.add('sel-'+quality);
+  });
+  const turn=WORLDS[currentWorld].turns[currentTurn];
+  const fb=document.getElementById('feedback-box');
+  const fbText=quality==='good'?turn.feedback.good:quality==='avoidant'?turn.feedback.avoidant:turn.feedback.neutral;
+  fb.textContent=fbText||'';
+  if(fbText) fb.className='feedback-box visible fb-'+quality;
+
+  if(quality==='avoidant'){
+    cumulative.avoidant++;
+    const ca=document.getElementById('cum-avoidant');ca.textContent=cumulative.avoidant;ca.className='signal-val warning';
+  }
+  cumulative.rts.push(turnSignals.reaction_time); updateCumRT();
+  totalSignals++; document.getElementById('dbg-signals').textContent=totalSignals;
+
+  const deltas=applyUCPUpdate();
+  document.getElementById('next-btn').classList.add('visible');
+  if(currentWorld==='rental') updateSubTabs();
+
+  dbWrite('signals',{
+    session_id:sessionId, scene_id:WORLDS[currentWorld].id, turn_id:currentTurn+1,
+    event_type:'turn_complete',
+    reaction_time_s:turnSignals.reaction_time,
+    replay_count:turnSignals.replay_count,
+    hint_clicked:turnSignals.hint_clicks>0,
+    choice:letter, choice_quality:quality,
+    meta_understood:metaState.understood,
+    meta_predicted:metaState.predicted,
+    ucp_deltas:deltas,
+  });
+}
+
+// ═══════════════════════════════════════════
+//  TIMER
+// ═══════════════════════════════════════════
+function startTimer(){
+  turnStartTime=Date.now(); clearInterval(timerInterval);
+  timerInterval=setInterval(()=>{
+    const v=((Date.now()-turnStartTime)/1000).toFixed(1);
+    const el=document.getElementById('sig-timer'); el.textContent=v+'s';
+    el.className='signal-val '+(parseFloat(v)>10?'warning':'active');
+  },100);
+}
+function stopTimer(){clearInterval(timerInterval);}
+function updateCumRT(){
+  const arr=cumulative.rts; if(!arr.length)return;
+  const avg=(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+  const el=document.getElementById('cum-rt'); el.textContent=avg+'s';
+  el.className='signal-val '+(parseFloat(avg)<5?'good':parseFloat(avg)>10?'warning':'');
+}
+
+// ═══════════════════════════════════════════
+//  META
+// ═══════════════════════════════════════════
+function setMeta(field,val){
+  metaState[field]=val;
+  if(field==='understood'){
+    document.querySelectorAll('#pills-understood .meta-pill').forEach(p=>{p.className='meta-pill'+(p.dataset.val===val?' au-'+val:'');});
+    const el=document.getElementById('sig-meta-u');
+    el.textContent=val==='yes'?'✓ 懂':val==='partial'?'△ 部分':'✗ 没懂';
+    el.className='signal-val '+(val==='yes'?'good':val==='no'?'warning':'');
+  }
+  if(field==='predicted'){
+    document.querySelectorAll('#pills-predicted .meta-pill').forEach(p=>{p.className='meta-pill'+(p.dataset.val===String(val)?' ap-'+val:'');});
+    const el=document.getElementById('sig-meta-p');
+    el.textContent=val?'✓ 有预判':'✗ 没有';
+    el.className='signal-val '+(val?'good':'');
+  }
+}
+
+// ═══════════════════════════════════════════
+//  AUDIO
+// ═══════════════════════════════════════════
+function autoPlay(text){setTimeout(()=>speakText(text),350);}
+function playAudio(){
+  if(!choiceMade){
+    turnSignals.replay_count++; cumulative.replays++;
+    document.getElementById('sig-replay').textContent=turnSignals.replay_count;
+    document.getElementById('sig-replay').className='signal-val warning';
+    document.getElementById('cum-replays').textContent=cumulative.replays;
+    const sw=WORLDS[currentWorld].turns[currentTurn].sw.onReplay||{};
+    applyDeltas(sw,'replay'); totalSignals++;
+    document.getElementById('dbg-signals').textContent=totalSignals;
+    dbWrite('signals',{session_id:sessionId,scene_id:WORLDS[currentWorld].id,turn_id:currentTurn+1,event_type:'replay',replay_count:turnSignals.replay_count});
+  }
+  speakText(WORLDS[currentWorld].turns[currentTurn].cashier);
+}
+function speakText(text){
+  if(!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  const utt=new SpeechSynthesisUtterance(text);
+  utt.lang='en-GB'; utt.rate=0.88;
+  const vs=window.speechSynthesis.getVoices();
+  const v=vs.find(v=>v.lang==='en-GB')||vs.find(v=>v.lang.startsWith('en'));
+  if(v)utt.voice=v;
+  window.speechSynthesis.speak(utt);
+}
+
+// ═══════════════════════════════════════════
+//  HINT
+// ═══════════════════════════════════════════
+function useHint(){
+  if(choiceMade)return;
+  turnSignals.hint_clicks++; cumulative.hints++;
+  document.getElementById('cum-hints').textContent=cumulative.hints;
+  document.getElementById('cum-hints').className='signal-val warning';
+  const hb=document.getElementById('hint-box');
+  hb.textContent=WORLDS[currentWorld].turns[currentTurn].hint; hb.classList.add('visible');
+  document.getElementById('btn-hint').disabled=true;
+  const sw=WORLDS[currentWorld].turns[currentTurn].sw.onHint||{};
+  applyDeltas(sw,'hint'); totalSignals++;
+  dbWrite('signals',{session_id:sessionId,scene_id:WORLDS[currentWorld].id,turn_id:currentTurn+1,event_type:'hint',hint_clicked:true});
+}
+
+// ═══════════════════════════════════════════
+//  UCP UPDATE
+// ═══════════════════════════════════════════
+function applyUCPUpdate(){
+  const turn=WORLDS[currentWorld].turns[currentTurn];
+  const letter=turnSignals.choice;
+  const rt=turnSignals.reaction_time;
+  const deltas={...(turn.sw.onChoice[letter]||{})};
+  // 元认知校正
+  if(metaState.understood==='no'||metaState.understood==='partial'){
+    for(const dim in deltas){if(deltas[dim]>0)deltas[dim]=deltas[dim]*0.4;}
+  }
+  const hasPredicted=metaState.predicted===true;
+  let rtMod=rt<4?+0.04:rt>12?-0.08:rt>7?-0.04:0;
+  if(hasPredicted&&rtMod<0)rtMod=rtMod*0.5;
+  if(rtMod!==0){
+    const sw=turn.sw.onSlow||{};
+    for(const dim of Object.keys(deltas)){if(sw[dim])deltas[dim]=(deltas[dim]||0)+rtMod;}
+  }
+  applyDeltas(deltas,'choice');
+  return deltas;
+}
+function applyDeltas(deltas){
+  for(const[dim,delta]of Object.entries(deltas)){
+    if(!ucp[dim])continue;
+    const prev=ucp[dim].confidence_score;
+    const next=Math.max(0.05,Math.min(0.99,prev+delta));
+    ucp[dim].evidence_count+=1;
+    ucp[dim].trend=next>prev+0.03?'up':next<prev-0.03?'down':'stable';
+    ucp[dim].confidence_score=next;
+    flashDelta(dim,delta);
+  }
+  renderUCP();
+}
+function flashDelta(dim,delta){
+  const cell=document.getElementById('ucp-'+dim);if(!cell)return;
+  const f=document.createElement('span');f.className='delta-flash';
+  f.style.color=delta>0?'var(--green)':'var(--red)';
+  f.textContent=(delta>0?'+':'')+delta.toFixed(2);
+  const sc=cell.querySelector('.ucp-score');if(sc){sc.appendChild(f);setTimeout(()=>f.remove(),1200);}
+}
+
+// ═══════════════════════════════════════════
+//  RENDER UCP
+// ═══════════════════════════════════════════
+function renderUCP(){
+  const list=document.getElementById('ucp-list');list.innerHTML='';
+  const activeDims=WORLDS[currentWorld].activeDims;
+  // Active dims group
+  const g1=document.createElement('div');g1.className='ucp-group-label';
+  g1.textContent=t('当前场景','Current Scene');
+  list.appendChild(g1);
+  for(const dimId of activeDims){ list.appendChild(makeUCPCard(dimId,false)); }
+  // Other dims group
+  const otherDims=Object.keys(UCP_META).filter(d=>!activeDims.includes(d));
+  if(otherDims.length){
+    const g2=document.createElement('div');g2.className='ucp-group-label';
+    g2.textContent=t('其他场景','Other Scenes');
+    list.appendChild(g2);
+    for(const dimId of otherDims){ list.appendChild(makeUCPCard(dimId,true)); }
+  }
+}
+function makeUCPCard(dimId,inactive){
+  const meta=UCP_META[dimId];const state=ucp[dimId];const sc=state.confidence_score;
+  const barClass=sc>=0.70?'high':sc>=0.45?'mid':'low';
+  const scoreColor=sc>=0.70?'var(--green)':sc>=0.45?'var(--yellow)':'var(--red)';
+  const trend=state.trend==='up'?'↑':state.trend==='down'?'↓':'—';
+  const name=lang==='zh'?meta.name_cn:meta.name_en;
+  const div=document.createElement('div');
+  div.className='ucp-dim'+(inactive?' inactive':'');
+  div.id='ucp-'+dimId;
+  div.innerHTML=`
+    <div class="ucp-dim-header">
+      <div><div class="ucp-dim-name">${name}</div><div class="ucp-dim-meta">${meta.category} · ${meta.cefr}</div></div>
+      <span class="ucp-badge">${dimId}</span>
+    </div>
+    <div class="ucp-bar-track"><div class="ucp-bar-fill ${barClass}" style="width:${(sc*100).toFixed(0)}%"></div></div>
+    <div class="ucp-row">
+      <div class="ucp-score" style="color:${scoreColor}">${sc.toFixed(2)}</div>
+      <div class="ucp-evidence">ev×${state.evidence_count}</div>
+      <div class="ucp-trend ${state.trend}">${trend}</div>
+    </div>`;
+  return div;
+}
+
+// ═══════════════════════════════════════════
+//  NEXT TURN / REPORT
+// ═══════════════════════════════════════════
+function nextTurn(){
+  const turns=WORLDS[currentWorld].turns;
+  if(currentTurn<turns.length-1){
+    loadWorld(currentWorld,currentTurn+1);
+  } else {
+    showReport();
+  }
+}
+
+async function showReport(){
+  document.getElementById('progress-fill').style.width='100%';
+  document.getElementById('turn-label').textContent=t('已完成','Complete');
+  document.getElementById('scene-panel').style.display='none';
+  document.getElementById('report-wrap').classList.add('visible');
+  completedWorlds[currentWorld]=true;
+  document.querySelectorAll('.world-tab').forEach(t=>{ if(t.dataset.world===currentWorld) t.classList.add('completed'); });
+
+  await saveSession(sessionId,WORLDS[currentWorld].id,true,{total_turns:WORLDS[currentWorld].turns.length,total_signals:totalSignals,total_hints:cumulative.hints,total_replays:cumulative.replays,avoidant_count:cumulative.avoidant});
+  await dbWrite('ucp_snapshots',{session_id:sessionId,scene_id:WORLDS[currentWorld].id,ucp});
+
+  // Report title
+  const titles={supermarket:{cn:'🛒 超市结账完成 · 能力画像',en:'🛒 Supermarket Complete · Profile'},rental:{cn:'🏠 租房全程完成 · 能力画像',en:'🏠 Rental Journey Complete · Profile'}};
+  const rtEl=document.getElementById('report-title');
+  rtEl.dataset.cn=titles[currentWorld].cn; rtEl.dataset.en=titles[currentWorld].en;
+  rtEl.textContent=lang==='zh'?titles[currentWorld].cn:titles[currentWorld].en;
+
+  // Other scene button
+  const ob=document.getElementById('other-scene-btn');
+  const otherWorld=currentWorld==='supermarket'?'rental':'supermarket';
+  const obLabel={supermarket:{cn:'→ 前往租房场景',en:'→ Try Rental Scene'},rental:{cn:'→ 前往超市场景',en:'→ Try Supermarket'}};
+  ob.dataset.cn=obLabel[currentWorld].cn; ob.dataset.en=obLabel[currentWorld].en;
+  ob.textContent=lang==='zh'?obLabel[currentWorld].cn:obLabel[currentWorld].en;
+
+  const activeDims=WORLDS[currentWorld].activeDims;
+  const weaknesses=[],strengths=[];
+  for(const dimId of activeDims){
+    const state=ucp[dimId]; const meta=UCP_META[dimId]; const name=lang==='zh'?meta.name_cn:meta.name_en;
+    if(state.confidence_score<0.45) weaknesses.push({dimId,name,score:state.confidence_score,evidence:state.evidence_count});
+    else if(state.confidence_score>=0.65) strengths.push({dimId,name,score:state.confidence_score,evidence:state.evidence_count});
+  }
+
+  let diag='';
+  if(weaknesses.length){
+    const wn=weaknesses.map(w=>w.name).join('、');
+    diag=t(`检测到薄弱维度：${wn}。Agent建议：生成专项关卡强化这些维度，下次在相关场景中提高信号密度。`,`Weak dimensions: ${wn}. Agent suggests targeted levels and increased signal density next session.`);
+  } else {
+    diag=t('表现优秀！建议尝试另一个场景挑战不同维度，进一步丰富你的能力画像。','Strong performance! Try the other scene to challenge different UCP dimensions.');
+  }
+
+  const grid=document.getElementById('report-grid'); grid.innerHTML='';
+  if(weaknesses.length){
+    const w=document.createElement('div');w.className='report-card';
+    w.innerHTML=`<h4>⚠️ ${t('薄弱维度','Weak')}</h4>${weaknesses.map(e=>`<div class="weakness-item"><h5>${e.name}</h5><p>Score: ${e.score.toFixed(2)} · ev×${e.evidence}</p></div>`).join('')}`;
+    grid.appendChild(w);
+  }
+  if(strengths.length){
+    const s=document.createElement('div');s.className='report-card';
+    s.innerHTML=`<h4>✅ ${t('较强维度','Strong')}</h4>${strengths.map(e=>`<div class="strength-item"><h5>${e.name}</h5><p>Score: ${e.score.toFixed(2)} · ev×${e.evidence}</p></div>`).join('')}`;
+    grid.appendChild(s);
+  }
+  const avg=cumulative.rts.length?(cumulative.rts.reduce((a,b)=>a+b,0)/cumulative.rts.length).toFixed(1):'—';
+  const stat=document.createElement('div');stat.className='report-card';
+  stat.innerHTML=`<h4>📊 ${t('数据摘要','Stats')}</h4><p>
+    ${t('总信号','Signals')}: <strong>${totalSignals}</strong><br>
+    ${t('均值反应','Avg RT')}: <strong>${avg}s</strong><br>
+    ${t('提示','Hints')}: <strong>${cumulative.hints}</strong> · ${t('重听','Replays')}: <strong>${cumulative.replays}</strong><br>
+    ${t('回避','Avoidant')}: <strong>${cumulative.avoidant}</strong> · ${t('DB写入','DB writes')}: <strong>${dbWriteCount}</strong>
+  </p>`;
+  grid.appendChild(stat);
+  const de=document.createElement('div');de.className='diagnosis-box';
+  de.innerHTML=`<h4>🤖 ${t('Agent 诊断','Agent Diagnosis')}</h4><p>${diag}</p>`;
+  grid.appendChild(de);
+}
+
+// ═══════════════════════════════════════════
+//  RESTART / SWITCH
+// ═══════════════════════════════════════════
+function restartScene(){
+  resetCumulative();
+  document.getElementById('report-wrap').classList.remove('visible');
+  document.getElementById('scene-panel').style.display='';
+  loadWorld(currentWorld,0);
+}
+function goOtherScene(){
+  const other=currentWorld==='supermarket'?'rental':'supermarket';
+  switchWorld(other);
+}
+
+// ═══════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════
+window.addEventListener('DOMContentLoaded',()=>{
+  if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{};window.speechSynthesis.getVoices();}
+  init();
+});
+</script>
+</body>
+</html>

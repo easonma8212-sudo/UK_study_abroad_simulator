@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英留模拟器 · 内容创作工具</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2e3350;
+  --accent:#4f7ef8;--accent2:#7c3aed;--green:#22c55e;--yellow:#eab308;--red:#ef4444;
+  --text:#e2e8f0;--text-dim:#64748b;--text-mid:#94a3b8;--radius:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;font-size:14px}
+header{display:flex;align-items:center;justify-content:space-between;padding:13px 24px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.logo{font-size:15px;font-weight:700}.logo span{color:var(--accent)}
+.badge{font-size:11px;padding:3px 9px;border-radius:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text-mid);font-weight:600}
+
+/* layout */
+.workspace{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden;min-height:0}
+.pane{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.pane:last-child{border-right:none}
+.pane-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface)}
+.pane-title{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
+.pane-body{flex:1;overflow-y:auto;padding:20px}
+
+/* cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+.card-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+label{font-size:12px;color:var(--text-mid);display:block;margin-bottom:5px;font-weight:500}
+input[type=text],input[type=password],select,textarea{
+  width:100%;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 12px;
+  color:var(--text);font-size:13px;outline:none;font-family:inherit;
+}
+input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:120px;line-height:1.5}
+select{cursor:pointer}
+.form-row{margin-bottom:12px}
+.form-row:last-child{margin-bottom:0}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* file drop zone */
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:#0f1a3a}
+.drop-zone input{display:none}
+.drop-icon{font-size:32px;margin-bottom:10px}
+.drop-label{font-size:14px;font-weight:600;color:var(--text-mid);margin-bottom:4px}
+.drop-sub{font-size:12px;color:var(--text-dim)}
+.file-info{display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:12px;color:var(--text-mid);display:flex;align-items:center;gap:8px}
+.file-info.visible{display:flex}
+
+/* extracted text */
+.text-preview{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;line-height:1.7;color:var(--text-mid);max-height:280px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;font-family:'SF Mono','Fira Code',monospace}
+.text-stats{font-size:11px;color:var(--text-dim);margin-top:6px;display:flex;gap:12px}
+
+/* dim checkboxes */
+.dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dim-check{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;cursor:pointer;background:var(--bg);transition:all .15s}
+.dim-check:hover{border-color:var(--accent)}
+.dim-check input{accent-color:var(--accent);width:14px;height:14px;flex-shrink:0}
+.dim-check-label{font-size:11px;line-height:1.3}
+.dim-check-id{font-size:9px;color:var(--text-dim);font-weight:700}
+.dim-check.checked{border-color:var(--accent);background:#0f1a3a}
+
+/* buttons */
+.btn{padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;transition:all .15s;display:inline-flex;align-items:center;gap:7px}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{opacity:.85}
+.btn-secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text)}.btn-secondary:hover{background:var(--border)}
+.btn-success{background:#166534;color:#86efac;border:1px solid var(--green)}.btn-success:hover{background:#14532d}
+.btn-sm{padding:5px 12px;font-size:12px;border-radius:6px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+
+/* progress / status */
+.status-bar{padding:10px 20px;border-top:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0}
+.status-dot.ok{background:var(--green)}
+.status-dot.err{background:var(--red)}
+.status-dot.busy{background:var(--yellow);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* generated output */
+.turn-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px}
+.turn-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.turn-num{font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+.turn-actions{display:flex;gap:6px}
+.turn-field{margin-bottom:10px}
+.turn-field label{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px}
+.turn-field textarea,.turn-field input{font-size:12px;padding:7px 10px;background:var(--surface);border-color:var(--border)}
+.option-row{display:grid;grid-template-columns:30px 1fr 90px;gap:6px;align-items:center;margin-bottom:6px}
+.option-letter{font-size:12px;font-weight:700;color:var(--accent);text-align:center}
+.option-quality{font-size:11px;padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer}
+.quality-good{border-color:var(--green);color:var(--green)}
+.quality-neutral{border-color:var(--yellow);color:var(--yellow)}
+.quality-avoidant{border-color:var(--red);color:var(--red)}
+.json-output{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:11px;font-family:'SF Mono','Fira Code',monospace;line-height:1.6;color:#93c5fd;overflow-x:auto;max-height:300px;overflow-y:auto;white-space:pre}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-dim)}
+.empty-icon{font-size:36px;margin-bottom:12px;opacity:.4}
+.empty-text{font-size:14px;font-weight:600;margin-bottom:4px}
+.empty-sub{font-size:12px}
+
+/* tabs */
+.output-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:14px}
+.output-tab{padding:8px 16px;font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
+.output-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* toast */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:#0f2e16;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">英留<span>模拟器</span> <span style="color:var(--text-dim);font-size:11px;font-weight:400;margin-left:6px">· 内容创作工具</span></div>
+  <span class="badge">Content Creator v0.1</span>
+</header>
+
+<div class="workspace">
+
+  <!-- ── Left pane: 输入配置 ── -->
+  <div class="pane">
+    <div class="pane-header">
+      <span class="pane-title">📄 素材 & 配置</span>
+      <button class="btn btn-primary btn-sm" id="generate-btn" onclick="generate()" disabled>⚡ 生成题目</button>
+    </div>
+    <div class="pane-body">
+
+      <!-- File upload -->
+      <div class="card">
+        <div class="card-title">📁 上传素材文件</div>
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+          <input type="file" id="file-input" accept=".pdf,.doc,.docx,.txt" onchange="handleFile(event)">
+          <div class="drop-icon">📂</div>
+          <div class="drop-label">点击或拖拽文件到此处</div>
+          <div class="drop-sub">支持 PDF · DOCX · TXT</div>
+        </div>
+        <div class="file-info" id="file-info">
+          <span id="file-icon">📄</span>
+          <span id="file-name">—</span>
+          <span style="margin-left:auto;color:var(--text-dim)" id="file-size">—</span>
+        </div>
+      </div>
+
+      <!-- 或手动粘贴文本 -->
+      <div class="card">
+        <div class="card-title">✏️ 或直接粘贴文本</div>
+        <div class="form-row">
+          <textarea id="manual-text" placeholder="粘贴场景对话、雅思听力原文、或任何相关文字素材……" oninput="onManualText()" rows="7"></textarea>
+        </div>
+        <div class="text-stats" id="text-stats" style="display:none">
+          <span>字数：<strong id="stat-words">0</strong></span>
+          <span>字符：<strong id="stat-chars">0</strong></span>
+        </div>
+      </div>
+
+      <!-- 场景配置 -->
+      <div class="card">
+        <div class="card-title">🎬 场景配置</div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>场景名称（中文）</label>
+            <input type="text" id="scene-name-cn" placeholder="例：超市结账" value="">
+          </div>
+          <div class="form-row">
+            <label>Scene Name (EN)</label>
+            <input type="text" id="scene-name-en" placeholder="e.g. Supermarket Checkout" value="">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>说话角色（中文）</label>
+            <input type="text" id="speaker-cn" placeholder="收银员 说" value="收银员 说">
+          </div>
+          <div class="form-row">
+            <label>Speaker (EN)</label>
+            <input type="text" id="speaker-en" placeholder="CASHIER" value="CASHIER">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>目标 CEFR 等级</label>
+            <select id="cefr-level">
+              <option value="A2">A2</option>
+              <option value="A2-B1" selected>A2–B1</option>
+              <option value="B1">B1</option>
+              <option value="B1-B2">B1–B2</option>
+              <option value="B2">B2</option>
+              <option value="B2-C1">B2–C1</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>生成轮数</label>
+            <select id="turn-count">
+              <option value="2">2 轮</option>
+              <option value="3">3 轮</option>
+              <option value="4" selected>4 轮</option>
+              <option value="5">5 轮</option>
+              <option value="6">6 轮</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- UCP 维度 -->
+      <div class="card">
+        <div class="card-title">🧠 关联 UCP 维度（可多选）</div>
+        <div class="dim-grid" id="dim-grid"></div>
+      </div>
+
+      <!-- API 配置 -->
+      <div class="card">
+        <div class="card-title">🔑 LLM 配置</div>
+        <div class="form-row">
+          <label>模型提供方</label>
+          <select id="api-provider" onchange="onProviderChange()">
+            <option value="gemini">Google Gemini（免费额度 · 推荐）</option>
+            <option value="openai">OpenAI GPT-4o</option>
+          </select>
+        </div>
+        <div class="form-row" id="model-row">
+          <label>具体模型</label>
+          <select id="api-model">
+            <option value="gemini-2.0-flash">gemini-2.0-flash（快 · 免费）</option>
+            <option value="gemini-1.5-pro">gemini-1.5-pro（强 · 免费额度）</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>API Key <span style="color:var(--text-dim);font-weight:400">（仅在本地使用，不会上传）</span></label>
+          <input type="password" id="api-key" placeholder="粘贴你的 API Key" oninput="onApiKey()">
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.5">
+          Gemini 免费申请：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a><br>
+          Key 仅存于本页内存，关闭即消失。
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Right pane: 生成结果 ── -->
+  <div class="pane">
+    <div class="pane-header">
+      <span class="pane-title">⚡ 生成结果</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" onclick="copyJSON()" id="copy-btn" disabled>📋 复制 JSON</button>
+        <button class="btn btn-success btn-sm" onclick="downloadJSON()" id="dl-btn" disabled>⬇ 下载 JSON</button>
+      </div>
+    </div>
+    <div class="pane-body" id="output-pane">
+      <div class="empty-state">
+        <div class="empty-icon">🎲</div>
+        <div class="empty-text">还没有生成内容</div>
+        <div class="empty-sub">配置好左侧参数后，点击「⚡ 生成题目」</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="status-bar">
+  <div class="status-dot" id="status-dot"></div>
+  <span id="status-text">就绪 · 上传素材并配置参数后开始生成</span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- mammoth.js for DOCX -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════
+//  UCP DIMENSIONS
+// ═══════════════════════════════════════════
+const ALL_DIMS = {
+  dim_001:{name_cn:'数字/价格听力',name_en:'Price/Number Listening',cefr:'A2-B1'},
+  dim_002:{name_cn:'英式口语表达',name_en:'British Colloquialisms',cefr:'B1'},
+  dim_003:{name_cn:'服务场景词汇',name_en:'Service Vocab',cefr:'A2'},
+  dim_004:{name_cn:'语用流利度',name_en:'Pragmatic Fluency',cefr:'B1'},
+  dim_005:{name_cn:'租房/法律词汇',name_en:'Housing & Legal Vocab',cefr:'B1-B2'},
+  dim_006:{name_cn:'英式生活俚语',name_en:'British Daily Slang',cefr:'B1'},
+  dim_007:{name_cn:'谈判/主张表达',name_en:'Assertive Communication',cefr:'B2'},
+  dim_008:{name_cn:'日常行政词汇',name_en:'Admin & Logistics Vocab',cefr:'A2-B1'},
+};
+let selectedDims = new Set(['dim_001','dim_002']);
+
+function renderDimGrid(){
+  const g=document.getElementById('dim-grid'); g.innerHTML='';
+  Object.entries(ALL_DIMS).forEach(([id,meta])=>{
+    const checked=selectedDims.has(id);
+    const div=document.createElement('div');
+    div.className='dim-check'+(checked?' checked':'');
+    div.innerHTML=`
+      <input type="checkbox" ${checked?'checked':''} onchange="toggleDim('${id}',this.checked)">
+      <div class="dim-check-label">
+        <div class="dim-check-id">${id}</div>
+        <div style="font-size:11px;color:var(--text)">${meta.name_cn}</div>
+        <div style="font-size:10px;color:var(--text-dim)">${meta.cefr}</div>
+      </div>`;
+    g.appendChild(div);
+  });
+}
+function toggleDim(id,checked){
+  checked?selectedDims.add(id):selectedDims.delete(id);
+  renderDimGrid();
+}
+
+// ═══════════════════════════════════════════
+//  FILE HANDLING
+// ═══════════════════════════════════════════
+let extractedText = '';
+
+function onDragOver(e){e.preventDefault();document.getElementById('drop-zone').classList.add('drag-over');}
+function onDragLeave(e){document.getElementById('drop-zone').classList.remove('drag-over');}
+function onDrop(e){e.preventDefault();document.getElementById('drop-zone').classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f)processFile(f);}
+function handleFile(e){const f=e.target.files[0];if(f)processFile(f);}
+
+async function processFile(file){
+  setStatus('busy','正在解析文件…');
+  const fi=document.getElementById('file-info');
+  document.getElementById('file-icon').textContent=file.name.endsWith('.pdf')?'📕':file.name.endsWith('.txt')?'📝':'📘';
+  document.getElementById('file-name').textContent=file.name;
+  document.getElementById('file-size').textContent=formatSize(file.size);
+  fi.classList.add('visible');
+
+  try{
+    if(file.name.endsWith('.pdf'))         extractedText=await extractPDF(file);
+    else if(file.name.match(/\.docx?$/i))  extractedText=await extractDOCX(file);
+    else                                    extractedText=await file.text();
+
+    document.getElementById('manual-text').value=extractedText;
+    updateTextStats(extractedText);
+    checkReady();
+    setStatus('ok',`已提取 ${countWords(extractedText)} 词 · 来自 ${file.name}`);
+  }catch(err){
+    setStatus('err','文件解析失败：'+err.message);
+  }
+}
+
+async function extractPDF(file){
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const ab=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+  let text='';
+  for(let i=1;i<=Math.min(pdf.numPages,30);i++){
+    const page=await pdf.getPage(i);
+    const tc=await page.getTextContent();
+    text+=tc.items.map(s=>s.str).join(' ')+'\n';
+  }
+  return text.trim();
+}
+
+async function extractDOCX(file){
+  const ab=await file.arrayBuffer();
+  const result=await mammoth.extractRawText({arrayBuffer:ab});
+  return result.value.trim();
+}
+
+function onManualText(){
+  extractedText=document.getElementById('manual-text').value;
+  updateTextStats(extractedText);
+  checkReady();
+}
+
+function updateTextStats(text){
+  const words=countWords(text), chars=text.length;
+  document.getElementById('stat-words').textContent=words;
+  document.getElementById('stat-chars').textContent=chars;
+  document.getElementById('text-stats').style.display=words>0?'flex':'none';
+}
+function countWords(text){return text.trim().split(/\s+/).filter(Boolean).length;}
+function formatSize(b){return b>1024*1024?(b/1024/1024).toFixed(1)+'MB':(b/1024).toFixed(0)+'KB';}
+
+// ═══════════════════════════════════════════
+//  API CONFIG
+// ═══════════════════════════════════════════
+function onProviderChange(){
+  const p=document.getElementById('api-provider').value;
+  const ms=document.getElementById('api-model');
+  if(p==='gemini'){
+    ms.innerHTML='<option value="gemini-2.0-flash">gemini-2.0-flash（快 · 免费）</option><option value="gemini-1.5-pro">gemini-1.5-pro（强 · 免费额度）</option>';
+  } else {
+    ms.innerHTML='<option value="gpt-4o">gpt-4o</option><option value="gpt-4o-mini">gpt-4o-mini（便宜）</option>';
+  }
+  checkReady();
+}
+function onApiKey(){checkReady();}
+function checkReady(){
+  const hasText=extractedText.trim().length>50;
+  const hasKey=document.getElementById('api-key').value.trim().length>10;
+  document.getElementById('generate-btn').disabled=!(hasText&&hasKey);
+}
+
+// ═══════════════════════════════════════════
+//  GENERATION PROMPT
+// ═══════════════════════════════════════════
+function buildPrompt(){
+  const text=extractedText.trim().slice(0,4000); // cap to avoid huge prompts
+  const sceneCN=document.getElementById('scene-name-cn').value||'场景';
+  const sceneEN=document.getElementById('scene-name-en').value||'Scene';
+  const speakerCN=document.getElementById('speaker-cn').value||'对方 说';
+  const speakerEN=document.getElementById('speaker-en').value||'SPEAKER';
+  const cefr=document.getElementById('cefr-level').value;
+  const turns=document.getElementById('turn-count').value;
+  const dims=[...selectedDims];
+  const dimDesc=dims.map(d=>`${d}: ${ALL_DIMS[d]?.name_cn||d}`).join(', ');
+  const deltaRange=cefr.includes('B2')?'0.10~0.20':'0.06~0.15';
+
+  return `你是英留模拟器的内容创作专家。英留模拟器是一款帮助中国留学生适应英国真实生活场景的英语学习产品，核心创新是行为驱动评估——通过玩家在对话场景中的行为信号（反应时间、重听次数、选项选择）动态更新用户能力画像(UCP)。
+
+## 任务
+根据以下素材文本，创作 ${turns} 轮对话题目，用于「${sceneCN} / ${sceneEN}」场景。
+
+## 素材文本
+---
+${text}
+---
+
+## 输出要求
+生成一个合法 JSON 数组，包含 ${turns} 个 turn 对象，每个对象严格遵循以下结构：
+
+\`\`\`json
+[
+  {
+    "cashier": "（英国人说的真实对话，包含自然的英式口语/俚语/缩略，CEFR目标：${cefr}）",
+    "subtext": null,
+    "speaker_cn": "${speakerCN}",
+    "speaker_en": "${speakerEN}",
+    "hint": "（中文解释对话中的关键词汇/文化背景，帮助学习者理解，格式：'词/短语'=含义。中英对照）",
+    "options": [
+      {"letter": "A", "text": "（自然流利的好回应）", "quality": "good"},
+      {"letter": "B", "text": "（可接受但不够自然的回应）", "quality": "neutral"},
+      {"letter": "C", "text": "（暴露语言/文化盲区的回避性回应）", "quality": "avoidant"}
+    ],
+    "feedback": {
+      "good": "✓ （中文反馈，解释为什么这个回应好，30字内）",
+      "neutral": "△ （中文反馈，解释为什么可接受但不够好，20字内）",
+      "avoidant": "✗ （中文反馈，解释这个回应暴露了什么语言问题，30字内）"
+    },
+    "sw": {
+      "onHint": {（点提示时的负向UCP delta，从${dimDesc}中选1-2个最相关的，delta范围-${deltaRange.split('~')[0]}至-${deltaRange.split('~')[1]}）},
+      "onReplay": {（重听时的负向delta，选1个最相关dim，-0.06至-0.10）},
+      "onChoice": {
+        "A": {（选A时的正向delta，+${deltaRange}）},
+        "B": {（选B时的小负向delta，-0.03至-0.08）},
+        "C": {（选C时的较大负向delta，-0.08至-0.15）}
+      },
+      "onSlow": {（反应慢时的负向delta，选1个dim，-0.04至-0.08）}
+    }
+  }
+]
+\`\`\`
+
+## 创作原则
+1. 对话必须是英国真实生活中会出现的，不要美式英语
+2. 每轮对话聚焦一个关键词汇/表达/文化点（如 quid / pigeonhole / playing up）
+3. avoidant 选项要真实反映中国留学生的常见困境，不要故意设计明显的错误
+4. sw 中的 dim_id 只能从 [${dims.join(', ')}] 中选取
+5. delta 数值必须是浮点数，如 -0.12，不能是字符串
+6. 只输出 JSON 数组，不要任何其他文字、解释或 markdown 代码块标记`;
+}
+
+// ═══════════════════════════════════════════
+//  API CALL
+// ═══════════════════════════════════════════
+let generatedTurns = [];
+
+async function generate(){
+  const key=document.getElementById('api-key').value.trim();
+  const provider=document.getElementById('api-provider').value;
+  const model=document.getElementById('api-model').value;
+  if(!key){toast('请先填写 API Key');return;}
+  if(!extractedText.trim()){toast('请先上传或粘贴素材文本');return;}
+
+  setStatus('busy','正在生成题目，请稍候…');
+  document.getElementById('generate-btn').disabled=true;
+  document.getElementById('output-pane').innerHTML='<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><div class="empty-text">LLM 生成中…</div><div class="empty-sub">通常需要 10-30 秒</div></div>';
+
+  try{
+    const prompt=buildPrompt();
+    let raw='';
+    if(provider==='gemini') raw=await callGemini(key,model,prompt);
+    else raw=await callOpenAI(key,model,prompt);
+
+    // parse JSON from response
+    const json=extractJSON(raw);
+    generatedTurns=JSON.parse(json);
+    renderOutput(generatedTurns);
+    document.getElementById('copy-btn').disabled=false;
+    document.getElementById('dl-btn').disabled=false;
+    setStatus('ok',`✓ 生成完成 · ${generatedTurns.length} 轮题目`);
+  }catch(err){
+    setStatus('err','生成失败：'+err.message);
+    document.getElementById('output-pane').innerHTML=`<div class="empty-state"><div style="font-size:32px;opacity:.4">❌</div><div class="empty-text" style="color:var(--red)">生成失败</div><div class="empty-sub" style="color:var(--text-dim)">${err.message}</div><div class="empty-sub" style="margin-top:8px;color:var(--text-dim)">请检查 API Key 是否正确，或查看控制台</div></div>`;
+  }finally{
+    document.getElementById('generate-btn').disabled=false;
+  }
+}
+
+async function callGemini(key,model,prompt){
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const res=await fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      contents:[{parts:[{text:prompt}]}],
+      generationConfig:{temperature:0.7,maxOutputTokens:4096}
+    })
+  });
+  if(!res.ok){const e=await res.json();throw new Error(e?.error?.message||res.statusText);}
+  const data=await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text||'';
+}
+
+async function callOpenAI(key,model,prompt){
+  const res=await fetch('https://api.openai.com/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify({
+      model,temperature:0.7,max_tokens:4096,
+      messages:[{role:'user',content:prompt}]
+    })
+  });
+  if(!res.ok){const e=await res.json();throw new Error(e?.error?.message||res.statusText);}
+  const data=await res.json();
+  return data.choices?.[0]?.message?.content||'';
+}
+
+function extractJSON(raw){
+  // strip markdown code fences if present
+  let s=raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+  // find array
+  const start=s.indexOf('['), end=s.lastIndexOf(']');
+  if(start===-1||end===-1)throw new Error('LLM 未返回有效 JSON 数组，请重试。原始输出：'+s.slice(0,200));
+  return s.slice(start,end+1);
+}
+
+// ═══════════════════════════════════════════
+//  OUTPUT RENDERING
+// ═══════════════════════════════════════════
+let viewMode='cards'; // 'cards' | 'json'
+
+function renderOutput(turns){
+  const pane=document.getElementById('output-pane');
+  pane.innerHTML='';
+
+  // tabs
+  const tabs=document.createElement('div');
+  tabs.className='output-tabs';
+  tabs.innerHTML=`
+    <div class="output-tab ${viewMode==='cards'?'active':''}" onclick="switchView('cards')">🃏 可视化编辑</div>
+    <div class="output-tab ${viewMode==='json'?'active':''}" onclick="switchView('json')">{ } 导出 JSON</div>`;
+  pane.appendChild(tabs);
+
+  const content=document.createElement('div');
+  content.id='output-content';
+  pane.appendChild(content);
+  renderViewContent(turns);
+}
+
+function switchView(mode){
+  viewMode=mode;
+  document.querySelectorAll('.output-tab').forEach((t,i)=>{
+    t.classList.toggle('active',(i===0&&mode==='cards')||(i===1&&mode==='json'));
+  });
+  renderViewContent(generatedTurns);
+}
+
+function renderViewContent(turns){
+  const c=document.getElementById('output-content'); if(!c)return;
+  c.innerHTML='';
+  if(viewMode==='cards') renderCards(turns,c);
+  else renderJSON(turns,c);
+}
+
+function renderCards(turns,container){
+  turns.forEach((turn,i)=>{
+    const card=document.createElement('div');
+    card.className='turn-card';
+    card.innerHTML=`
+      <div class="turn-header">
+        <span class="turn-num">第 ${i+1} 轮</span>
+        <div class="turn-actions">
+          <button class="btn btn-secondary btn-sm" onclick="regenTurn(${i})">🔄 重生成</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="deleteTurn(${i})">✕</button>
+        </div>
+      </div>
+      <div class="turn-field">
+        <label>对白</label>
+        <textarea rows="2" onchange="updateTurn(${i},'cashier',this.value)">${escHtml(turn.cashier)}</textarea>
+      </div>
+      <div class="turn-field">
+        <label>Hint（中文解释）</label>
+        <textarea rows="2" onchange="updateTurn(${i},'hint',this.value)">${escHtml(turn.hint)}</textarea>
+      </div>
+      <div class="turn-field">
+        <label>选项</label>
+        ${(turn.options||[]).map((o,oi)=>`
+          <div class="option-row">
+            <span class="option-letter">${o.letter}</span>
+            <input type="text" value="${escHtml(o.text)}" onchange="updateOption(${i},${oi},'text',this.value)">
+            <select class="option-quality quality-${o.quality}" onchange="updateOption(${i},${oi},'quality',this.value)">
+              <option value="good" ${o.quality==='good'?'selected':''}>✓ good</option>
+              <option value="neutral" ${o.quality==='neutral'?'selected':''}>△ neutral</option>
+              <option value="avoidant" ${o.quality==='avoidant'?'selected':''}>✗ avoidant</option>
+            </select>
+          </div>`).join('')}
+      </div>
+      <div class="turn-field">
+        <label>Feedback（好/中/差）</label>
+        <input type="text" value="${escHtml(turn.feedback?.good||'')}" placeholder="✓ good feedback" style="margin-bottom:5px" onchange="updateFeedback(${i},'good',this.value)">
+        <input type="text" value="${escHtml(turn.feedback?.neutral||'')}" placeholder="△ neutral feedback" style="margin-bottom:5px" onchange="updateFeedback(${i},'neutral',this.value)">
+        <input type="text" value="${escHtml(turn.feedback?.avoidant||'')}" placeholder="✗ avoidant feedback" onchange="updateFeedback(${i},'avoidant',this.value)">
+      </div>`;
+    container.appendChild(card);
+  });
+
+  // add turn button
+  const addBtn=document.createElement('button');
+  addBtn.className='btn btn-secondary';
+  addBtn.style.width='100%';
+  addBtn.textContent='+ 手动添加一轮';
+  addBtn.onclick=addEmptyTurn;
+  container.appendChild(addBtn);
+}
+
+function renderJSON(turns,container){
+  const sceneCN=document.getElementById('scene-name-cn').value||'新场景';
+  const sceneEN=document.getElementById('scene-name-en').value||'new_scene';
+  const sceneId=sceneEN.toLowerCase().replace(/\s+/g,'_');
+  const dims=[...selectedDims];
+  const activeDimsStr=JSON.stringify(dims);
+
+  const wrapper={
+    id:sceneId,
+    icon:'🎭',
+    title_cn:sceneCN,
+    title_en:sceneEN,
+    activeDims:dims,
+    turns:turns
+  };
+  const jsonStr=JSON.stringify(wrapper,null,2);
+
+  const pre=document.createElement('pre');
+  pre.className='json-output';
+  pre.textContent=jsonStr;
+  container.appendChild(pre);
+
+  const note=document.createElement('div');
+  note.style.cssText='font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6;padding:12px;background:var(--surface);border-radius:8px;border:1px solid var(--border)';
+  note.innerHTML=`<strong style="color:var(--accent)">如何使用：</strong><br>
+将上方 JSON 对象添加到 <code style="color:#93c5fd">demo.html</code> 的 <code style="color:#93c5fd">WORLDS</code> 变量中，key 为 <code style="color:#93c5fd">"${sceneId}"</code>，<br>
+同时在 world-tabs 区域添加对应的 Tab，并在 UCP_META 中注册维度。`;
+  container.appendChild(note);
+}
+
+// ═══════════════════════════════════════════
+//  EDIT HELPERS
+// ═══════════════════════════════════════════
+function updateTurn(i,field,val){generatedTurns[i][field]=val;}
+function updateOption(ti,oi,field,val){generatedTurns[ti].options[oi][field]=val;}
+function updateFeedback(i,key,val){if(!generatedTurns[i].feedback)generatedTurns[i].feedback={};generatedTurns[i].feedback[key]=val;}
+function deleteTurn(i){generatedTurns.splice(i,1);renderOutput(generatedTurns);}
+function addEmptyTurn(){
+  generatedTurns.push({cashier:'',speaker_cn:document.getElementById('speaker-cn').value,speaker_en:document.getElementById('speaker-en').value,hint:'',options:[{letter:'A',text:'',quality:'good'},{letter:'B',text:'',quality:'neutral'},{letter:'C',text:'',quality:'avoidant'}],feedback:{good:'',neutral:'',avoidant:''},sw:{onHint:{},onReplay:{},onChoice:{A:{},B:{},C:{}},onSlow:{}}});
+  renderOutput(generatedTurns);
+}
+
+async function regenTurn(i){
+  toast('单轮重生成：建议复制 JSON 后手动修改，或在配置中减少生成轮数后整体重生成');
+}
+
+// ═══════════════════════════════════════════
+//  EXPORT
+// ═══════════════════════════════════════════
+function getExportJSON(){
+  const sceneEN=document.getElementById('scene-name-en').value||'new_scene';
+  const sceneId=sceneEN.toLowerCase().replace(/\s+/g,'_');
+  return JSON.stringify({
+    id:sceneId,
+    icon:'🎭',
+    title_cn:document.getElementById('scene-name-cn').value||'新场景',
+    title_en:sceneEN,
+    activeDims:[...selectedDims],
+    turns:generatedTurns
+  },null,2);
+}
+
+function copyJSON(){
+  navigator.clipboard.writeText(getExportJSON()).then(()=>toast('✓ JSON 已复制到剪贴板')).catch(()=>toast('复制失败，请手动选择文本'));
+}
+
+function downloadJSON(){
+  const sceneId=(document.getElementById('scene-name-en').value||'scene').toLowerCase().replace(/\s+/g,'_');
+  const blob=new Blob([getExportJSON()],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`scene_${sceneId}.json`;a.click();
+}
+
+// ═══════════════════════════════════════════
+//  STATUS / TOAST
+// ═══════════════════════════════════════════
+function setStatus(state,msg){
+  const dot=document.getElementById('status-dot');
+  dot.className='status-dot '+state;
+  document.getElementById('status-text').textContent=msg;
+}
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+renderDimGrid();
+</script>
+</body>
+</html>
