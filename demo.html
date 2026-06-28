@@ -167,17 +167,12 @@ main{flex:1;display:grid;grid-template-columns:1fr 340px;overflow:hidden;min-hei
 </header>
 
 <!-- World tabs -->
-<div class="world-tabs">
-  <div class="world-tab active" data-world="supermarket" onclick="switchWorld('supermarket')">🛒 <span data-cn="超市结账" data-en="Supermarket">超市结账</span></div>
-  <div class="world-tab" data-world="rental" onclick="switchWorld('rental')">🏠 <span data-cn="租房全程" data-en="Rental Housing">租房全程</span></div>
+<div class="world-tabs" id="world-tabs">
+  <!-- 动态生成 by renderWorldTabs() -->
 </div>
 
-<!-- Sub-tabs for rental -->
 <div class="sub-tabs" id="sub-tabs">
-  <div class="sub-tab active" data-sub="0">🏠 <span data-cn="看房" data-en="Viewing">看房</span></div>
-  <div class="sub-tab" data-sub="1">🏢 <span data-cn="前台" data-en="Reception">前台</span></div>
-  <div class="sub-tab" data-sub="2">🔧 <span data-cn="报修" data-en="Maintenance">报修</span></div>
-  <div class="sub-tab" data-sub="3">📄 <span data-cn="续租" data-en="Renewal">续租</span></div>
+  <!-- 动态生成 by renderSubTabs() -->
 </div>
 
 <main>
@@ -442,7 +437,7 @@ let metaState={understood:null,predicted:null};
 let cumulative={hints:0,replays:0,avoidant:0,rts:[]};
 let totalSignals=0, sessionId='ses_'+Math.random().toString(36).slice(2,9);
 let sessionStart=new Date().toISOString();
-let completedWorlds={supermarket:false,rental:false};
+let completedWorlds={}; // 动态，key 为 worldId
 
 // ═══════════════════════════════════════════
 //  INIT
@@ -450,9 +445,57 @@ let completedWorlds={supermarket:false,rental:false};
 async function init(){
   document.getElementById('dbg-session').textContent=sessionId;
   await initDB();
+  await loadScenesFromDB();   // 从 Supabase 加载，失败则用硬编码兜底
+  renderWorldTabs();
   await saveSession(sessionId,'combined_demo',false);
   renderUCP();
-  loadWorld('supermarket',0);
+  const firstWorld=Object.keys(WORLDS)[0]||'supermarket';
+  loadWorld(firstWorld,0);
+}
+
+// ═══════════════════════════════════════════
+//  DYNAMIC SCENE LOADING
+// ═══════════════════════════════════════════
+async function loadScenesFromDB(){
+  if(!db)return;
+  try{
+    const{data,error}=await db.from('scenes').select('id,scene_data').eq('status','published');
+    if(error||!data?.length)return;
+    data.forEach(row=>{
+      if(row.scene_data) WORLDS[row.id]=row.scene_data;
+    });
+  }catch(e){}
+}
+
+function renderWorldTabs(){
+  const el=document.getElementById('world-tabs'); el.innerHTML='';
+  const worlds=Object.keys(WORLDS);
+  worlds.forEach((wid,idx)=>{
+    const w=WORLDS[wid];
+    const tab=document.createElement('div');
+    tab.className='world-tab'+(idx===0&&currentWorld===wid?' active':currentWorld===wid?' active':'');
+    tab.dataset.world=wid;
+    tab.onclick=()=>switchWorld(wid);
+    tab.innerHTML=`${w.icon||'🎭'} <span>${lang==='zh'?(w.title_cn||wid):(w.title_en||wid)}</span>`;
+    if(completedWorlds[wid])tab.classList.add('completed');
+    el.appendChild(tab);
+  });
+}
+
+function renderSubTabs(){
+  const turns=WORLDS[currentWorld]?.turns||[];
+  const isTabbed=turns.some(t=>t.title_cn);
+  const el=document.getElementById('sub-tabs');
+  el.classList.toggle('visible',isTabbed);
+  el.innerHTML='';
+  if(!isTabbed)return;
+  turns.forEach((turn,i)=>{
+    const tab=document.createElement('div');
+    tab.className='sub-tab'+(i===currentTurn?' active':i<currentTurn?' done':'');
+    tab.dataset.sub=i;
+    tab.innerHTML=`${turn.icon||''} <span>${lang==='zh'?(turn.title_cn||`场景${i+1}`):(turn.title_en||`Scene ${i+1}`)}</span>`;
+    el.appendChild(tab);
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -460,11 +503,9 @@ async function init(){
 // ═══════════════════════════════════════════
 function switchWorld(w){
   if(w===currentWorld)return;
-  // save progress of current session before switching
   currentWorld=w;
   currentTurn=0; choiceMade=false; resetCumulative();
-  document.querySelectorAll('.world-tab').forEach(t=>t.classList.toggle('active',t.dataset.world===w));
-  document.getElementById('sub-tabs').classList.toggle('visible',w==='rental');
+  renderWorldTabs();
   document.getElementById('report-wrap').classList.remove('visible');
   document.getElementById('scene-panel').style.display='';
   loadWorld(w,0);
@@ -476,15 +517,7 @@ function resetCumulative(){
   document.getElementById('cum-rt').textContent='—';
   document.getElementById('dbg-signals').textContent='0';
 }
-function updateSubTabs(){
-  if(currentWorld!=='rental')return;
-  const turns=WORLDS.rental.turns;
-  document.querySelectorAll('.sub-tab').forEach((tab,i)=>{
-    tab.classList.remove('active','done');
-    if(i===currentTurn) tab.classList.add('active');
-    else if(i<currentTurn) tab.classList.add('done');
-  });
-}
+function updateSubTabs(){ renderSubTabs(); } // 兼容旧调用
 function loadWorld(w,turnIdx){
   currentWorld=w; currentTurn=turnIdx; choiceMade=false;
   turnSignals={reaction_time:null,replay_count:0,hint_clicks:0,choice:null};
@@ -501,19 +534,21 @@ function loadWorld(w,turnIdx){
   const turnCount=`${t('第','Turn ')}${turnIdx+1}${t(' / ','/')}${turns.length}${t(' 轮','')}`;
   document.getElementById('turn-label').textContent=turnCount;
 
-  // Scene visual
-  if(w==='supermarket'){
-    document.getElementById('scene-icon').textContent=world.icon;
+  // Scene visual — tabbed if turn has own title_cn, sequential otherwise
+  const isTabbed=!!turn.title_cn;
+  if(!isTabbed){
+    document.getElementById('scene-icon').textContent=world.icon||'🎭';
     const st=document.getElementById('scene-title'); st.dataset.cn=world.title_cn; st.dataset.en=world.title_en; st.textContent=lang==='zh'?world.title_cn:world.title_en;
-    const ss=document.getElementById('scene-sub'); ss.dataset.cn=world.sub_cn; ss.dataset.en=world.sub_en; ss.textContent=lang==='zh'?world.sub_cn:world.sub_en;
+    const ss=document.getElementById('scene-sub'); ss.dataset.cn=world.sub_cn||''; ss.dataset.en=world.sub_en||''; ss.textContent=lang==='zh'?(world.sub_cn||''):(world.sub_en||'');
     document.getElementById('context-strip').style.display='none';
   } else {
-    document.getElementById('scene-icon').textContent=turn.icon;
-    const st=document.getElementById('scene-title'); st.dataset.cn=turn.title_cn; st.dataset.en=turn.title_en; st.textContent=lang==='zh'?turn.title_cn:turn.title_en;
-    const ss=document.getElementById('scene-sub'); ss.dataset.cn=turn.sub_cn; ss.dataset.en=turn.sub_en; ss.textContent=lang==='zh'?turn.sub_cn:turn.sub_en;
-    const ctx=document.getElementById('context-strip'); ctx.style.display='flex';
-    const ct=document.getElementById('context-text'); ct.dataset.cn=turn.context_cn; ct.dataset.en=turn.context_en; ct.textContent=lang==='zh'?turn.context_cn:turn.context_en;
-    updateSubTabs();
+    document.getElementById('scene-icon').textContent=turn.icon||world.icon||'🎭';
+    const st=document.getElementById('scene-title'); st.dataset.cn=turn.title_cn; st.dataset.en=turn.title_en||turn.title_cn; st.textContent=lang==='zh'?turn.title_cn:(turn.title_en||turn.title_cn);
+    const ss=document.getElementById('scene-sub'); ss.dataset.cn=turn.sub_cn||''; ss.dataset.en=turn.sub_en||''; ss.textContent=lang==='zh'?(turn.sub_cn||''):(turn.sub_en||'');
+    const ctx=document.getElementById('context-strip');
+    if(turn.context_cn){ctx.style.display='flex'; const ct=document.getElementById('context-text'); ct.dataset.cn=turn.context_cn; ct.dataset.en=turn.context_en||''; ct.textContent=lang==='zh'?turn.context_cn:(turn.context_en||turn.context_cn);}
+    else ctx.style.display='none';
+    renderSubTabs();
   }
 
   // Speaker & dialogue
@@ -790,23 +825,27 @@ async function showReport(){
   document.getElementById('scene-panel').style.display='none';
   document.getElementById('report-wrap').classList.add('visible');
   completedWorlds[currentWorld]=true;
-  document.querySelectorAll('.world-tab').forEach(t=>{ if(t.dataset.world===currentWorld) t.classList.add('completed'); });
+  renderWorldTabs();
 
-  await saveSession(sessionId,WORLDS[currentWorld].id,true,{total_turns:WORLDS[currentWorld].turns.length,total_signals:totalSignals,total_hints:cumulative.hints,total_replays:cumulative.replays,avoidant_count:cumulative.avoidant});
-  await dbWrite('ucp_snapshots',{session_id:sessionId,scene_id:WORLDS[currentWorld].id,ucp});
+  const sceneId=WORLDS[currentWorld].id||currentWorld;
+  await saveSession(sessionId,sceneId,true,{total_turns:WORLDS[currentWorld].turns.length,total_signals:totalSignals,total_hints:cumulative.hints,total_replays:cumulative.replays,avoidant_count:cumulative.avoidant});
+  await dbWrite('ucp_snapshots',{session_id:sessionId,scene_id:sceneId,ucp});
 
-  // Report title
-  const titles={supermarket:{cn:'🛒 超市结账完成 · 能力画像',en:'🛒 Supermarket Complete · Profile'},rental:{cn:'🏠 租房全程完成 · 能力画像',en:'🏠 Rental Journey Complete · Profile'}};
+  // Report title — use world data
+  const world=WORLDS[currentWorld];
   const rtEl=document.getElementById('report-title');
-  rtEl.dataset.cn=titles[currentWorld].cn; rtEl.dataset.en=titles[currentWorld].en;
-  rtEl.textContent=lang==='zh'?titles[currentWorld].cn:titles[currentWorld].en;
+  const rtCn=`${world.icon||'🎯'} ${world.title_cn||currentWorld} · 完成`;
+  const rtEn=`${world.icon||'🎯'} ${world.title_en||currentWorld} · Complete`;
+  rtEl.textContent=lang==='zh'?rtCn:rtEn;
 
-  // Other scene button
+  // Other scene button — pick next world
+  const worldKeys=Object.keys(WORLDS);
+  const nextWorld=worldKeys[(worldKeys.indexOf(currentWorld)+1)%worldKeys.length];
   const ob=document.getElementById('other-scene-btn');
-  const otherWorld=currentWorld==='supermarket'?'rental':'supermarket';
-  const obLabel={supermarket:{cn:'→ 前往租房场景',en:'→ Try Rental Scene'},rental:{cn:'→ 前往超市场景',en:'→ Try Supermarket'}};
-  ob.dataset.cn=obLabel[currentWorld].cn; ob.dataset.en=obLabel[currentWorld].en;
-  ob.textContent=lang==='zh'?obLabel[currentWorld].cn:obLabel[currentWorld].en;
+  const nextW=WORLDS[nextWorld];
+  const obText=`→ ${lang==='zh'?(nextW?.title_cn||nextWorld):(nextW?.title_en||nextWorld)}`;
+  ob.textContent=obText;
+  ob.onclick=()=>switchWorld(nextWorld);
 
   const activeDims=WORLDS[currentWorld].activeDims;
   const weaknesses=[],strengths=[];
@@ -859,7 +898,8 @@ function restartScene(){
   loadWorld(currentWorld,0);
 }
 function goOtherScene(){
-  const other=currentWorld==='supermarket'?'rental':'supermarket';
+  const worldKeys=Object.keys(WORLDS);
+  const other=worldKeys[(worldKeys.indexOf(currentWorld)+1)%worldKeys.length];
   switchWorld(other);
 }
 

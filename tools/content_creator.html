@@ -247,6 +247,7 @@ select{cursor:pointer}
       <div style="display:flex;gap:6px">
         <button class="btn btn-secondary btn-sm" onclick="copyJSON()" id="copy-btn" disabled>📋 复制 JSON</button>
         <button class="btn btn-success btn-sm" onclick="downloadJSON()" id="dl-btn" disabled>⬇ 下载 JSON</button>
+        <button class="btn btn-sm" id="save-db-btn" onclick="saveToSupabase()" disabled style="background:var(--accent2);color:white">☁ 保存到 Supabase</button>
       </div>
     </div>
     <div class="pane-body" id="output-pane">
@@ -267,6 +268,8 @@ select{cursor:pointer}
 
 <div class="toast" id="toast"></div>
 
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <!-- PDF.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- mammoth.js for DOCX -->
@@ -492,6 +495,7 @@ async function generate(){
     renderOutput(generatedTurns);
     document.getElementById('copy-btn').disabled=false;
     document.getElementById('dl-btn').disabled=false;
+    document.getElementById('save-db-btn').disabled=false;
     setStatus('ok',`✓ 生成完成 · ${generatedTurns.length} 轮题目`);
   }catch(err){
     setStatus('err','生成失败：'+err.message);
@@ -698,6 +702,53 @@ function downloadJSON(){
   const sceneId=(document.getElementById('scene-name-en').value||'scene').toLowerCase().replace(/\s+/g,'_');
   const blob=new Blob([getExportJSON()],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`scene_${sceneId}.json`;a.click();
+}
+
+// ═══════════════════════════════════════════
+//  SAVE TO SUPABASE
+// ═══════════════════════════════════════════
+const SB_URL  = 'https://gkzgxittqsvvoxgrnezv.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdremd4aXR0cXN2dm94Z3JuZXp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1OTMzMjEsImV4cCI6MjA5ODE2OTMyMX0.04Rg9VKvyFOYIJSI_mszyG4oL4FEbtRF4as0Jb6f9HM';
+let sbClient=null;
+
+function getSBClient(){
+  if(!sbClient&&window.supabase) sbClient=window.supabase.createClient(SB_URL,SB_ANON);
+  return sbClient;
+}
+
+async function saveToSupabase(){
+  if(!generatedTurns.length){toast('请先生成题目');return;}
+  const sb=getSBClient();
+  if(!sb){toast('Supabase SDK 未加载，请检查网络');return;}
+  const btn=document.getElementById('save-db-btn');
+  btn.disabled=true; btn.textContent='☁ 保存中…';
+
+  const sceneEN=document.getElementById('scene-name-en').value||'new_scene';
+  const sceneId=sceneEN.toLowerCase().replace(/\s+/g,'_');
+  const sceneData={
+    id:sceneId,
+    icon:'🎭',
+    title_cn:document.getElementById('scene-name-cn').value||'新场景',
+    title_en:sceneEN,
+    activeDims:[...selectedDims],
+    turns:generatedTurns
+  };
+
+  try{
+    const{error}=await sb.from('scenes').upsert({
+      id:sceneId,
+      scene_data:sceneData,
+      status:'published'
+    });
+    if(error)throw error;
+    toast(`✓ 场景「${sceneData.title_cn}」已保存到 Supabase，demo 下次刷新会自动加载`);
+    setStatus('ok',`已保存：${sceneId} → Supabase scenes 表`);
+  }catch(e){
+    toast('保存失败：'+e.message);
+    setStatus('err','保存失败：'+e.message);
+  }finally{
+    btn.disabled=false; btn.textContent='☁ 保存到 Supabase';
+  }
 }
 
 // ═══════════════════════════════════════════
